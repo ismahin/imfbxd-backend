@@ -1,0 +1,116 @@
+-- IMF Members table (production-grade)
+CREATE TABLE IF NOT EXISTS members (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  uuid CHAR(36) NOT NULL UNIQUE,
+  user_id VARCHAR(20) NOT NULL UNIQUE COMMENT 'Display ID e.g. IMF00001',
+  email VARCHAR(254) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  phone VARCHAR(50) DEFAULT NULL,
+  account_number VARCHAR(50) DEFAULT NULL,
+  beneficiary_ref_id VARCHAR(100) DEFAULT NULL,
+  nominee_name VARCHAR(255) DEFAULT NULL,
+  nominee_phone VARCHAR(50) DEFAULT NULL,
+  current_address TEXT DEFAULT NULL,
+  permanent_address TEXT DEFAULT NULL,
+  nominee_address TEXT DEFAULT NULL,
+  profile_picture VARCHAR(500) DEFAULT NULL,
+  user_type ENUM('Admin', 'Member') NOT NULL DEFAULT 'Member',
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  joining_date DATE DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_email (email),
+  INDEX idx_user_id (user_id),
+  INDEX idx_uuid (uuid),
+  INDEX idx_is_active (is_active),
+  INDEX idx_joining_date (joining_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS deposits (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  uuid CHAR(36) NOT NULL UNIQUE,
+  member_uuid CHAR(36) NOT NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  channel VARCHAR(50) NOT NULL DEFAULT 'Cash',
+  deposit_date DATE NOT NULL,
+  status ENUM('Completed', 'Pending', 'Failed') NOT NULL DEFAULT 'Completed',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_member_uuid (member_uuid),
+  INDEX idx_deposit_date (deposit_date),
+  INDEX idx_uuid (uuid),
+  FOREIGN KEY (member_uuid) REFERENCES members(uuid) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS gallery (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  uuid CHAR(36) NOT NULL UNIQUE,
+  title VARCHAR(255) NOT NULL,
+  category VARCHAR(50) NOT NULL DEFAULT 'Events',
+  date DATE DEFAULT NULL,
+  image_path VARCHAR(500) NOT NULL,
+  alt VARCHAR(255) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_uuid (uuid),
+  INDEX idx_category (category),
+  INDEX idx_date (date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS board_members (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  uuid CHAR(36) NOT NULL UNIQUE,
+  name VARCHAR(255) NOT NULL,
+  role VARCHAR(100) NOT NULL,
+  phone VARCHAR(50) DEFAULT NULL,
+  email VARCHAR(254) DEFAULT NULL,
+  since VARCHAR(20) DEFAULT NULL,
+  bio TEXT DEFAULT NULL,
+  display_order INT NOT NULL DEFAULT 0,
+  district VARCHAR(100) DEFAULT NULL,
+  profile_picture VARCHAR(500) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_uuid (uuid),
+  INDEX idx_display_order (display_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS messages (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  uuid CHAR(36) NOT NULL UNIQUE,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(254) NOT NULL,
+  website VARCHAR(500) DEFAULT NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_uuid (uuid),
+  INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS site_settings (
+  id INT UNSIGNED PRIMARY KEY DEFAULT 1,
+  org_name VARCHAR(255) DEFAULT 'IMF-BD',
+  reg_no VARCHAR(100) DEFAULT NULL,
+  contact_email VARCHAR(254) DEFAULT NULL,
+  contact_phone VARCHAR(50) DEFAULT NULL,
+  website VARCHAR(500) DEFAULT NULL,
+  address TEXT DEFAULT NULL,
+  contact_uae_address TEXT DEFAULT NULL,
+  contact_uae_phone VARCHAR(50) DEFAULT NULL,
+  contact_bd_address TEXT DEFAULT NULL,
+  contact_bd_phone VARCHAR(50) DEFAULT NULL,
+  footer_email VARCHAR(254) DEFAULT NULL,
+  footer_phone VARCHAR(50) DEFAULT NULL,
+  facebook_url VARCHAR(500) DEFAULT NULL,
+  twitter_url VARCHAR(500) DEFAULT NULL,
+  instagram_url VARCHAR(500) DEFAULT NULL,
+  linkedin_url VARCHAR(500) DEFAULT NULL,
+  primary_logo VARCHAR(500) DEFAULT NULL,
+  favicon VARCHAR(500) DEFAULT NULL,
+  logo_alt_text VARCHAR(255) DEFAULT NULL,
+  show_logo_text TINYINT(1) NOT NULL DEFAULT 1,
+  logo_text VARCHAR(255) DEFAULT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT single_row CHECK (id = 1)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
