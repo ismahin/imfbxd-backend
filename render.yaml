@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: imfbxd-backend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set the rest (DB, CORS_ORIGIN, JWT_SECRET, etc.) in Render dashboard or here if you prefer.
