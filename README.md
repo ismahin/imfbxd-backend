@@ -17,7 +17,7 @@ Production-grade Node.js + Express API with MySQL. Powers the IMF frontend (memb
 
 2. **Configure environment**
 
-   Copy `.env.example` to `.env` and set your MySQL credentials and auth secret:
+   Copy `.env.example` to `.env` and set your MySQL credentials, auth secret, CORS, and ImageKit keys:
 
    ```env
    PORT=8000
@@ -28,8 +28,15 @@ Production-grade Node.js + Express API with MySQL. Powers the IMF frontend (memb
    DB_USER=root
    DB_PASSWORD=your_password
    DB_NAME=imf_db
+
+   # Auth
    JWT_SECRET=your-secret-key-change-in-production
    JWT_EXPIRES_IN=7d
+
+   # ImageKit (so images still load even if this server sleeps)
+   IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/your_imagekit_id
+   IMAGEKIT_PUBLIC_KEY=your_public_key
+   IMAGEKIT_PRIVATE_KEY=your_private_key
    ```
 
 3. **Create database and tables**

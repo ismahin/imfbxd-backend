@@ -1,9 +1,9 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
-import fs from "fs/promises";
 import path from "path";
 import pool from "../db/pool.js";
 import { v4 as uuidv4 } from "uuid";
+import imagekit from "../services/imageKitClient.js";
 
 const router = Router();
 
@@ -17,16 +17,18 @@ const upload = multer({
   },
 });
 
-const UPLOADS_BOARD = path.join(process.cwd(), "uploads", "board");
-
 async function saveProfilePicture(uuid: string, file: Express.Multer.File): Promise<string> {
-  await fs.mkdir(UPLOADS_BOARD, { recursive: true });
   const ext = path.extname(file.originalname) || ".jpg";
   const safeExt = /^\.(jpe?g|png|gif|webp)$/i.test(ext) ? ext : ".jpg";
   const filename = `${uuid}${safeExt}`;
-  const filepath = path.join(UPLOADS_BOARD, filename);
-  await fs.writeFile(filepath, file.buffer);
-  return `/uploads/board/${filename}`;
+
+  const uploadResult = await imagekit.upload({
+    file: file.buffer,
+    fileName: filename,
+    folder: "/imfbxd/board",
+  });
+
+  return uploadResult.url;
 }
 
 function maybeMulter(req: Request, res: Response, next: (err?: unknown) => void) {

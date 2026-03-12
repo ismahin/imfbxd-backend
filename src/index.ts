@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs/promises";
 import { optionalAuth } from "./middleware/auth.js";
 import authRouter from "./routes/auth.js";
 import membersRouter from "./routes/members.js";
@@ -24,8 +25,25 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:3000")
 app.use(cors({ origin: corsOrigins.length > 0 ? corsOrigins : ["http://localhost:3000"], credentials: true }));
 app.use(express.json({ limit: "10mb" }));
 
-// Serve uploaded profile pictures (e.g. /uploads/members/xxx.jpg)
+// Serve legacy local uploads (for older records that still point to /uploads/....)
 const uploadsDir = path.join(process.cwd(), "uploads");
+const uploadSubDirs = ["members", "gallery", "board", "logo"];
+async function ensureUploadDirs() {
+  try {
+    await fs.mkdir(uploadsDir, { recursive: true });
+    await Promise.all(
+      uploadSubDirs.map((sub) =>
+        fs.mkdir(path.join(uploadsDir, sub), { recursive: true }),
+      ),
+    );
+  } catch (err) {
+    // Directory creation failure should not crash the server in production;
+    // log and continue so existing ImageKit-based URLs still work.
+    console.error("Failed to ensure upload directories:", err);
+  }
+}
+// Kick off directory creation (no await so startup isn't blocked)
+void ensureUploadDirs();
 app.use("/uploads", express.static(uploadsDir));
 
 app.use("/api/web/v1/authentication", authRouter);

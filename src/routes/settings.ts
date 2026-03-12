@@ -1,9 +1,9 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
-import fs from "fs/promises";
 import path from "path";
 import pool from "../db/pool.js";
 import { requireAuth } from "../middleware/auth.js";
+import imagekit from "../services/imageKitClient.js";
 
 const router = Router();
 
@@ -17,15 +17,17 @@ const upload = multer({
   },
 });
 
-const UPLOADS_LOGO = path.join(process.cwd(), "uploads", "logo");
-
 async function saveLogoFile(filename: string, file: Express.Multer.File): Promise<string> {
-  await fs.mkdir(UPLOADS_LOGO, { recursive: true });
   const ext = path.extname(file.originalname) || (file.mimetype?.includes("svg") ? ".svg" : ".png");
   const safe = `${filename}${ext}`;
-  const filepath = path.join(UPLOADS_LOGO, safe);
-  await fs.writeFile(filepath, file.buffer);
-  return `/uploads/logo/${safe}`;
+
+  const uploadResult = await imagekit.upload({
+    file: file.buffer,
+    fileName: safe,
+    folder: "/imfbxd/logo",
+  });
+
+  return uploadResult.url;
 }
 
 type SettingsRow = {
