@@ -53,10 +53,14 @@ type SettingsRow = {
   logo_alt_text: string | null;
   show_logo_text: number | null;
   logo_text: string | null;
+  hero_slider_interval: number | null;
+  why_imf_title: string | null;
+  why_imf_subtitle: string | null;
+  why_imf_text: string | null;
   updated_at: Date | null;
 };
 
-const SELECT_COLS = "id, org_name, reg_no, contact_email, contact_phone, website, address, contact_uae_address, contact_uae_phone, contact_bd_address, contact_bd_phone, footer_email, footer_phone, facebook_url, twitter_url, instagram_url, linkedin_url, primary_logo, favicon, logo_alt_text, show_logo_text, logo_text, updated_at";
+const SELECT_COLS = "id, org_name, reg_no, contact_email, contact_phone, website, address, contact_uae_address, contact_uae_phone, contact_bd_address, contact_bd_phone, footer_email, footer_phone, facebook_url, twitter_url, instagram_url, linkedin_url, primary_logo, favicon, logo_alt_text, show_logo_text, logo_text, hero_slider_interval, why_imf_title, why_imf_subtitle, why_imf_text, updated_at";
 
 function rowToSettings(row: SettingsRow) {
   return {
@@ -81,6 +85,10 @@ function rowToSettings(row: SettingsRow) {
     logo_alt_text: row.logo_alt_text ?? "",
     show_logo_text: row.show_logo_text !== 0,
     logo_text: row.logo_text ?? "",
+    hero_slider_interval: row.hero_slider_interval,
+    why_imf_title: row.why_imf_title ?? "",
+    why_imf_subtitle: row.why_imf_subtitle ?? "",
+    why_imf_text: row.why_imf_text ?? "",
     updated_at: row.updated_at?.toISOString?.() ?? null,
   };
 }
@@ -89,7 +97,8 @@ const ALLOWED_KEYS = [
   "org_name", "reg_no", "contact_email", "contact_phone", "website", "address",
   "contact_uae_address", "contact_uae_phone", "contact_bd_address", "contact_bd_phone",
   "footer_email", "footer_phone", "facebook_url", "twitter_url", "instagram_url", "linkedin_url",
-  "logo_alt_text", "show_logo_text", "logo_text",
+  "logo_alt_text", "show_logo_text", "logo_text", "hero_slider_interval",
+  "why_imf_title", "why_imf_subtitle", "why_imf_text",
 ] as const;
 
 // GET /api/web/v1/settings/ — public, returns current site settings
@@ -121,6 +130,14 @@ router.patch("/", requireAuth, async (req: Request, res: Response) => {
         if (key === "show_logo_text") {
           const v = body[key];
           values.push(v === true || v === "true" || v === "1" ? 1 : 0);
+        } else if (key === "hero_slider_interval") {
+          const raw = body[key];
+          const parsed = raw == null || String(raw).trim() === "" ? null : Number(String(raw));
+          if (parsed == null || Number.isNaN(parsed) || parsed < 1) {
+            values.push(null);
+          } else {
+            values.push(Math.floor(parsed));
+          }
         } else {
           values.push(body[key] != null ? String(body[key]).trim() : null);
         }

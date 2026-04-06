@@ -11,7 +11,9 @@ import galleryRouter from "./routes/gallery.js";
 import boardRouter from "./routes/board.js";
 import messagesRouter from "./routes/messages.js";
 import settingsRouter from "./routes/settings.js";
-import { ensureMembersTable, ensureDepositsTable, ensureGalleryTable, ensureBoardMembersTable, ensureMessagesTable, ensureSiteSettingsTable } from "./db/ensureTable.js";
+import rulesRouter from "./routes/rules.js";
+import notificationsRouter from "./routes/notifications.js";
+import { ensureMembersTable, ensureDepositsTable, ensureGalleryTable, ensureBoardMembersTable, ensureMessagesTable, ensureSiteSettingsTable, ensureRulesTable, ensureNotificationsTable } from "./db/ensureTable.js";
 import { ensureInitialAdmin } from "./db/bootstrapAdmin.js";
 
 const app = express();
@@ -52,13 +54,26 @@ app.use("/api/web/v1/deposits", optionalAuth, depositsRouter);
 app.use("/api/web/v1/gallery", optionalAuth, galleryRouter);
 app.use("/api/web/v1/board", optionalAuth, boardRouter);
 app.use("/api/web/v1/messages", messagesRouter);
+app.use("/api/web/v1/notifications", notificationsRouter);
 app.use("/api/web/v1/settings", settingsRouter);
+app.use("/api/web/v1/rules", optionalAuth, rulesRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-Promise.all([ensureMembersTable(), ensureDepositsTable(), ensureGalleryTable(), ensureBoardMembersTable(), ensureMessagesTable(), ensureSiteSettingsTable()])
+async function initializeSchema() {
+  await ensureMembersTable();
+  await ensureDepositsTable();
+  await ensureGalleryTable();
+  await ensureBoardMembersTable();
+  await ensureMessagesTable();
+  await ensureNotificationsTable();
+  await ensureSiteSettingsTable();
+  await ensureRulesTable();
+}
+
+initializeSchema()
   .then(() => ensureInitialAdmin())
   .then(() => {
     app.listen(port, () => {

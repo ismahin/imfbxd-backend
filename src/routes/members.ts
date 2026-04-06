@@ -54,10 +54,15 @@ type MemberRow = {
   email: string;
   name: string;
   phone: string | null;
+  nid_number: string | null;
+  date_of_birth: string | null;
   account_number: string | null;
   beneficiary_ref_id: string | null;
   nominee_name: string | null;
   nominee_phone: string | null;
+  nominee_nid_number: string | null;
+  nominee_account_number: string | null;
+  nominee_date_of_birth: string | null;
   current_address: string | null;
   permanent_address: string | null;
   nominee_address: string | null;
@@ -79,6 +84,43 @@ type ReferralRow = {
   email: string;
 };
 
+const MEMBER_SELECT_FIELDS = `
+  m.uuid,
+  m.user_id,
+  m.email,
+  m.name,
+  m.phone,
+  m.nid_number,
+  m.date_of_birth,
+  m.account_number,
+  m.beneficiary_ref_id,
+  m.nominee_name,
+  m.nominee_phone,
+  m.nominee_nid_number,
+  m.nominee_account_number,
+  m.nominee_date_of_birth,
+  m.current_address,
+  m.permanent_address,
+  m.nominee_address,
+  m.profile_picture,
+  m.user_type,
+  m.is_active,
+  m.joining_date,
+  m.created_at
+`.trim();
+
+const MEMBER_SELECT_FIELDS_PLAIN = MEMBER_SELECT_FIELDS.replaceAll("m.", "");
+
+function optionalText(value: unknown): string | null {
+  return value != null ? String(value).trim() : null;
+}
+
+function optionalDate(value: unknown): string | null {
+  if (value == null) return null;
+  const parsed = String(value).trim();
+  return parsed ? parsed : null;
+}
+
 function mapReferralRow(row: ReferralRow) {
   return {
     uuid: row.uuid,
@@ -95,11 +137,16 @@ function rowToMember(row: MemberRow) {
     email: row.email,
     name: row.name,
     phone: row.phone ?? undefined,
+    nid_number: row.nid_number ?? undefined,
+    date_of_birth: row.date_of_birth ?? undefined,
     user_id: row.user_id,
     account_number: row.account_number ?? undefined,
     beneficiary_ref_id: row.beneficiary_ref_id ?? null,
     nominee_name: row.nominee_name ?? undefined,
     nominee_phone: row.nominee_phone ?? undefined,
+    nominee_nid_number: row.nominee_nid_number ?? undefined,
+    nominee_account_number: row.nominee_account_number ?? undefined,
+    nominee_date_of_birth: row.nominee_date_of_birth ?? undefined,
     current_address: row.current_address ?? undefined,
     permanent_address: row.permanent_address ?? undefined,
     nominee_address: row.nominee_address ?? undefined,
@@ -135,9 +182,7 @@ router.get("/list/", async (req: Request, res: Response) => {
     const total = Number((countResult as { total: number }[])?.[0]?.total ?? 0);
 
     const [listResult] = await pool.query(
-      `SELECT m.uuid, m.user_id, m.email, m.name, m.phone, m.account_number, m.beneficiary_ref_id,
-       m.nominee_name, m.nominee_phone, m.current_address, m.permanent_address, m.nominee_address,
-       m.profile_picture, m.user_type, m.is_active, m.joining_date, m.created_at,
+      `SELECT ${MEMBER_SELECT_FIELDS},
        COALESCE((SELECT SUM(d.amount) FROM deposits d WHERE d.member_uuid = m.uuid), 0) AS total_deposits,
        COALESCE((SELECT COUNT(*) FROM members r WHERE r.beneficiary_ref_id = m.user_id), 0) AS referral_count
        FROM members m ORDER BY m.created_at DESC LIMIT ? OFFSET ?`,
@@ -167,9 +212,7 @@ router.get("/me/", requireAuth, async (req: Request, res: Response) => {
       return res.status(401).json({ detail: "Authentication required" });
     }
     const [getResult] = await pool.query(
-      `SELECT m.uuid, m.user_id, m.email, m.name, m.phone, m.account_number, m.beneficiary_ref_id,
-       m.nominee_name, m.nominee_phone, m.current_address, m.permanent_address, m.nominee_address,
-       m.profile_picture, m.user_type, m.is_active, m.joining_date, m.created_at,
+      `SELECT ${MEMBER_SELECT_FIELDS},
        COALESCE((SELECT SUM(d.amount) FROM deposits d WHERE d.member_uuid = m.uuid), 0) AS total_deposits,
        COALESCE((SELECT COUNT(*) FROM members r WHERE r.beneficiary_ref_id = m.user_id), 0) AS referral_count
        FROM members m WHERE m.uuid = ?`,
@@ -195,9 +238,7 @@ router.get("/me/", requireAuth, async (req: Request, res: Response) => {
 router.get("/:uuid/", async (req: Request, res: Response) => {
   try {
     const [getResult] = await pool.query(
-      `SELECT m.uuid, m.user_id, m.email, m.name, m.phone, m.account_number, m.beneficiary_ref_id,
-       m.nominee_name, m.nominee_phone, m.current_address, m.permanent_address, m.nominee_address,
-       m.profile_picture, m.user_type, m.is_active, m.joining_date, m.created_at,
+      `SELECT ${MEMBER_SELECT_FIELDS},
        COALESCE((SELECT SUM(d.amount) FROM deposits d WHERE d.member_uuid = m.uuid), 0) AS total_deposits,
        COALESCE((SELECT COUNT(*) FROM members r WHERE r.beneficiary_ref_id = m.user_id), 0) AS referral_count
        FROM members m WHERE m.uuid = ?`,
@@ -226,16 +267,21 @@ router.post("/", maybeMulter, async (req: Request, res: Response) => {
     const email = String(body.email ?? "").trim();
     const name = String(body.name ?? "").trim();
     const password = String(body.password ?? "");
-    const phone = body.phone != null ? String(body.phone) : null;
-    const account_number = body.account_number != null ? String(body.account_number) : null;
-    const nominee_name = body.nominee_name != null ? String(body.nominee_name) : null;
-    const nominee_phone = body.nominee_phone != null ? String(body.nominee_phone) : null;
-    const permanent_address = body.permanent_address != null ? String(body.permanent_address) : null;
-    const current_address = body.current_address != null ? String(body.current_address) : null;
-    const nominee_address = body.nominee_address != null ? String(body.nominee_address) : null;
-    const beneficiary_ref_id = body.beneficiary_ref_id != null ? String(body.beneficiary_ref_id) : null;
+    const phone = optionalText(body.phone);
+    const nid_number = optionalText(body.nid_number);
+    const date_of_birth = optionalDate(body.date_of_birth);
+    const account_number = optionalText(body.account_number);
+    const nominee_name = optionalText(body.nominee_name);
+    const nominee_phone = optionalText(body.nominee_phone);
+    const nominee_nid_number = optionalText(body.nominee_nid_number);
+    const nominee_account_number = optionalText(body.nominee_account_number);
+    const nominee_date_of_birth = optionalDate(body.nominee_date_of_birth);
+    const permanent_address = optionalText(body.permanent_address);
+    const current_address = optionalText(body.current_address);
+    const nominee_address = optionalText(body.nominee_address);
+    const beneficiary_ref_id = optionalText(body.beneficiary_ref_id);
     const user_type = ["Admin", "Member"].includes(String(body.user_type ?? "Member")) ? String(body.user_type) : "Member";
-    const joining_date = body.joining_date != null && String(body.joining_date).trim() ? String(body.joining_date).trim() : null;
+    const joining_date = optionalDate(body.joining_date);
 
     if (!email || !name || !password) {
       return res.status(400).json({ detail: "email, name and password are required" });
@@ -264,9 +310,11 @@ router.post("/", maybeMulter, async (req: Request, res: Response) => {
     }
 
     await pool.query(
-      `INSERT INTO members (uuid, user_id, email, password_hash, name, phone, account_number, beneficiary_ref_id,
-       nominee_name, nominee_phone, current_address, permanent_address, nominee_address, profile_picture, user_type, joining_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO members (
+        uuid, user_id, email, password_hash, name, phone, nid_number, date_of_birth, account_number, beneficiary_ref_id,
+        nominee_name, nominee_phone, nominee_nid_number, nominee_account_number, nominee_date_of_birth,
+        current_address, permanent_address, nominee_address, profile_picture, user_type, joining_date
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         uuid,
         user_id,
@@ -274,10 +322,15 @@ router.post("/", maybeMulter, async (req: Request, res: Response) => {
         password_hash,
         name,
         phone,
+        nid_number,
+        date_of_birth,
         account_number,
         beneficiary_ref_id,
         nominee_name,
         nominee_phone,
+        nominee_nid_number,
+        nominee_account_number,
+        nominee_date_of_birth,
         current_address,
         permanent_address,
         nominee_address,
@@ -288,9 +341,7 @@ router.post("/", maybeMulter, async (req: Request, res: Response) => {
     );
 
     const [createResult] = await pool.query(
-      `SELECT uuid, user_id, email, name, phone, account_number, beneficiary_ref_id,
-       nominee_name, nominee_phone, current_address, permanent_address, nominee_address,
-       profile_picture, user_type, is_active, joining_date, created_at
+      `SELECT ${MEMBER_SELECT_FIELDS_PLAIN}
        FROM members WHERE uuid = ?`,
       [uuid]
     );
@@ -341,14 +392,18 @@ router.patch("/:uuid/update/", optionalDecode, maybeMulter, async (req: Request,
       }
     }
 
-    const str = (v: unknown) => (v != null ? String(v) : null);
     const allAllowed = [
       "name",
       "email",
       "phone",
+      "nid_number",
+      "date_of_birth",
       "account_number",
       "nominee_name",
       "nominee_phone",
+      "nominee_nid_number",
+      "nominee_account_number",
+      "nominee_date_of_birth",
       "permanent_address",
       "current_address",
       "nominee_address",
@@ -359,6 +414,7 @@ router.patch("/:uuid/update/", optionalDecode, maybeMulter, async (req: Request,
     ] as const;
     const selfAllowed = ["name", "email", "phone"] as const;
     const allowed = isSelf ? selfAllowed : allAllowed;
+    const dateFields = new Set(["joining_date", "date_of_birth", "nominee_date_of_birth"]);
 
     if (body.email !== undefined && body.email !== existingRow.email) {
       const newEmail = String(body.email).trim();
@@ -381,10 +437,13 @@ router.patch("/:uuid/update/", optionalDecode, maybeMulter, async (req: Request,
           values.push(body[key]);
         } else if (key === "email") {
           updates.push("email = ?");
-          values.push(str(body[key]));
+          values.push(optionalText(body[key]));
+        } else if (dateFields.has(key)) {
+          updates.push(`${key} = ?`);
+          values.push(optionalDate(body[key]));
         } else {
           updates.push(`${key} = ?`);
-          values.push(str(body[key]));
+          values.push(optionalText(body[key]));
         }
       }
     }
@@ -396,9 +455,7 @@ router.patch("/:uuid/update/", optionalDecode, maybeMulter, async (req: Request,
 
     if (updates.length === 0) {
       const [noUpdateResult] = await pool.query(
-        `SELECT uuid, user_id, email, name, phone, account_number, beneficiary_ref_id,
-         nominee_name, nominee_phone, current_address, permanent_address, nominee_address,
-         profile_picture, user_type, is_active, joining_date, created_at
+        `SELECT ${MEMBER_SELECT_FIELDS_PLAIN}
          FROM members WHERE uuid = ?`,
         [uuid]
       );
@@ -410,9 +467,7 @@ router.patch("/:uuid/update/", optionalDecode, maybeMulter, async (req: Request,
     await pool.query(`UPDATE members SET ${updates.join(", ")} WHERE uuid = ?`, values);
 
     const [updateResult] = await pool.query(
-      `SELECT uuid, user_id, email, name, phone, account_number, beneficiary_ref_id,
-       nominee_name, nominee_phone, current_address, permanent_address, nominee_address,
-       profile_picture, user_type, is_active, joining_date, created_at
+      `SELECT ${MEMBER_SELECT_FIELDS_PLAIN}
        FROM members WHERE uuid = ?`,
       [uuid]
     );

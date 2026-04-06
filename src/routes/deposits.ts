@@ -1,8 +1,49 @@
 import { Router, Request, Response } from "express";
+import multer from "multer";
+import path from "path";
 import pool from "../db/pool.js";
 import { v4 as uuidv4 } from "uuid";
+import imagekit from "../services/imageKitClient.js";
 
 const router = Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /^image\/(jpeg|png|gif|webp)$/i.test(file.mimetype);
+    if (allowed) cb(null, true);
+    else cb(new Error("Only JPEG, PNG, GIF, and WebP images are allowed"));
+  },
+});
+
+async function saveProofImage(uuid: string, file: Express.Multer.File): Promise<string> {
+  const ext = path.extname(file.originalname) || ".jpg";
+  const safeExt = /^\.(jpe?g|png|gif|webp)$/i.test(ext) ? ext : ".jpg";
+  const filename = `${uuid}${safeExt}`;
+
+  const uploadResult = await imagekit.upload({
+    file: file.buffer,
+    fileName: filename,
+    folder: "/imfbxd/deposits",
+  });
+
+  return uploadResult.url;
+}
+
+function maybeMulter(req: Request, res: Response, next: (err?: unknown) => void) {
+  const contentType = req.headers["content-type"] || "";
+  if (contentType.startsWith("multipart/form-data")) {
+    return upload.single("proof_image")(req, res, (err?: unknown) => {
+      if (err) {
+        console.error("Deposit multer error:", err);
+        return res.status(400).json({ detail: err instanceof Error ? err.message : "File upload failed" });
+      }
+      next();
+    });
+  }
+  next();
+}
 
 type DepositRow = {
   id: number;
@@ -12,6 +53,7 @@ type DepositRow = {
   channel: string;
   deposit_date: string;
   status: string;
+  proof_image: string | null;
   created_at: Date;
   member_name?: string;
   member_user_id?: string;
@@ -33,6 +75,7 @@ function rowToDeposit(row: DepositRow) {
     date: row.deposit_date,
     deposit_date: row.deposit_date,
     status: row.status,
+    proof_image: row.proof_image ?? undefined,
     created_at: row.created_at?.toISOString?.() ?? undefined,
   };
 }
@@ -46,7 +89,7 @@ router.get("/list/", async (req: Request, res: Response) => {
 
     let countSql = "SELECT COUNT(*) AS total FROM deposits";
     let listSql = `
-      SELECT d.uuid, d.member_uuid, d.amount, d.channel, d.deposit_date, d.status, d.created_at,
+      SELECT d.uuid, d.member_uuid, d.amount, d.channel, d.deposit_date, d.status, d.proof_image, d.created_at,
              m.name AS member_name, m.user_id AS member_user_id, m.phone AS member_phone, m.email AS member_email
       FROM deposits d
       INNER JOIN members m ON m.uuid = d.member_uuid
@@ -104,7 +147,7 @@ router.get("/stats/", async (_req: Request, res: Response) => {
 router.get("/:uuid/", async (req: Request, res: Response) => {
   try {
     const [rows] = await pool.query(
-      `SELECT d.uuid, d.member_uuid, d.amount, d.channel, d.deposit_date, d.status, d.created_at,
+      `SELECT d.uuid, d.member_uuid, d.amount, d.channel, d.deposit_date, d.status, d.proof_image, d.created_at,
               m.name AS member_name, m.user_id AS member_user_id, m.phone AS member_phone, m.email AS member_email
        FROM deposits d
        INNER JOIN members m ON m.uuid = d.member_uuid
@@ -121,7 +164,7 @@ router.get("/:uuid/", async (req: Request, res: Response) => {
 });
 
 // POST /api/web/v1/deposits/
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", maybeMulter, async (req: Request, res: Response) => {
   try {
     const body = req.body as Record<string, unknown>;
     const member_uuid = String(body.member_uuid ?? "").trim();
@@ -146,13 +189,14 @@ router.post("/", async (req: Request, res: Response) => {
     }
 
     const uuid = uuidv4();
+    const proof_image = req.file ? await saveProofImage(uuid, req.file) : null;
     await pool.query(
-      "INSERT INTO deposits (uuid, member_uuid, amount, channel, deposit_date, status) VALUES (?, ?, ?, ?, ?, ?)",
-      [uuid, member_uuid, amount, channel, deposit_date, status]
+      "INSERT INTO deposits (uuid, member_uuid, amount, channel, deposit_date, status, proof_image) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [uuid, member_uuid, amount, channel, deposit_date, status, proof_image]
     );
 
     const [rows] = await pool.query(
-      `SELECT d.uuid, d.member_uuid, d.amount, d.channel, d.deposit_date, d.status, d.created_at,
+      `SELECT d.uuid, d.member_uuid, d.amount, d.channel, d.deposit_date, d.status, d.proof_image, d.created_at,
               m.name AS member_name, m.user_id AS member_user_id, m.phone AS member_phone, m.email AS member_email
        FROM deposits d
        INNER JOIN members m ON m.uuid = d.member_uuid
@@ -169,13 +213,14 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 // PATCH /api/web/v1/deposits/:uuid/
-router.patch("/:uuid/", async (req: Request, res: Response) => {
+router.patch("/:uuid/", maybeMulter, async (req: Request, res: Response) => {
   try {
     const uuid = req.params.uuid;
     const body = req.body as Record<string, unknown>;
 
-    const [existing] = await pool.query("SELECT id FROM deposits WHERE uuid = ?", [uuid]);
-    if (!(existing as { id: number }[])?.[0]) {
+    const [existing] = await pool.query("SELECT id, proof_image FROM deposits WHERE uuid = ?", [uuid]);
+    const existingRow = (existing as { id: number; proof_image: string | null }[])?.[0];
+    if (!existingRow) {
       return res.status(404).json({ detail: "Deposit not found" });
     }
 
@@ -197,6 +242,11 @@ router.patch("/:uuid/", async (req: Request, res: Response) => {
       updates.push("status = ?");
       values.push(body.status);
     }
+    if (req.file) {
+      const proof_image = await saveProofImage(uuid, req.file);
+      updates.push("proof_image = ?");
+      values.push(proof_image);
+    }
 
     if (updates.length > 0) {
       values.push(uuid);
@@ -204,7 +254,7 @@ router.patch("/:uuid/", async (req: Request, res: Response) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT d.uuid, d.member_uuid, d.amount, d.channel, d.deposit_date, d.status, d.created_at,
+      `SELECT d.uuid, d.member_uuid, d.amount, d.channel, d.deposit_date, d.status, d.proof_image, d.created_at,
               m.name AS member_name, m.user_id AS member_user_id, m.phone AS member_phone, m.email AS member_email
        FROM deposits d
        INNER JOIN members m ON m.uuid = d.member_uuid

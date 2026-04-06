@@ -4,6 +4,7 @@ import path from "path";
 import pool from "../db/pool.js";
 import { v4 as uuidv4 } from "uuid";
 import imagekit from "../services/imageKitClient.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -56,12 +57,45 @@ type GalleryRow = {
   created_at: Date;
 };
 
+const SECTION_OPTIONS = ["Hero", "Objectives", "Gallery"] as const;
+type GallerySection = (typeof SECTION_OPTIONS)[number];
+
+const SECTION_ALIASES: Record<string, GallerySection> = {
+  hero: "Hero",
+  objectives: "Objectives",
+  objective: "Objectives",
+  aims: "Objectives",
+  "aims & objectives": "Objectives",
+  "aims and objectives": "Objectives",
+  gallery: "Gallery",
+  event: "Gallery",
+  events: "Gallery",
+  meeting: "Gallery",
+  meetings: "Gallery",
+  award: "Gallery",
+  awards: "Gallery",
+  office: "Gallery",
+  community: "Gallery",
+};
+
+function resolveSection(value: unknown): GallerySection | null {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw || raw === "all") return null;
+  return SECTION_ALIASES[raw] ?? null;
+}
+
+function normalizeSection(value: unknown, fallback: GallerySection = "Gallery"): GallerySection {
+  return resolveSection(value) ?? fallback;
+}
+
 function rowToItem(row: GalleryRow) {
+  const category = normalizeSection(row.category);
+
   return {
     id: row.uuid,
     uuid: row.uuid,
     title: row.title,
-    category: row.category,
+    category,
     date: row.date ?? undefined,
     url: row.image_path,
     alt: row.alt ?? row.title,
@@ -69,18 +103,20 @@ function rowToItem(row: GalleryRow) {
   };
 }
 
-const CATEGORIES = ["Events", "Meetings", "Awards", "Office", "Community"];
-
 // GET /api/web/v1/gallery/list/ — list all (optional category, limit, offset)
 router.get("/list/", async (req: Request, res: Response) => {
   try {
-    const category = req.query.category as string | undefined;
+    const categoryParam = req.query.category as string | undefined;
     const limit = Math.min(Number(req.query.limit) || 100, 500);
     const offset = Number(req.query.offset) || 0;
 
     let where = "";
     const params: unknown[] = [];
-    if (category && category !== "All" && CATEGORIES.includes(category)) {
+    const category = resolveSection(categoryParam);
+    if (categoryParam && String(categoryParam).trim() && String(categoryParam).trim().toLowerCase() !== "all" && !category) {
+      return res.status(400).json({ detail: `Invalid gallery section. Allowed values: ${SECTION_OPTIONS.join(", ")}` });
+    }
+    if (category) {
       where = " WHERE category = ?";
       params.push(category);
     }
@@ -126,7 +162,7 @@ router.get("/:uuid/", async (req: Request, res: Response) => {
 });
 
 // POST /api/web/v1/gallery/ — create (multipart: image + title, category?, date?, alt?)
-router.post("/", maybeMulter, async (req: Request, res: Response) => {
+router.post("/", requireAuth, maybeMulter, async (req: Request, res: Response) => {
   try {
     const body = req.body as Record<string, unknown>;
     const title = String(body.title ?? "").trim();
@@ -137,7 +173,11 @@ router.post("/", maybeMulter, async (req: Request, res: Response) => {
 
     const uuid = uuidv4();
     const image_path = await saveGalleryImage(uuid, file);
-    const category = CATEGORIES.includes(String(body.category ?? "Events")) ? String(body.category) : "Events";
+    const categoryInput = body.section ?? body.category;
+    const category = categoryInput === undefined ? "Gallery" : resolveSection(categoryInput);
+    if (!category) {
+      return res.status(400).json({ detail: `Invalid gallery section. Allowed values: ${SECTION_OPTIONS.join(", ")}` });
+    }
     const date = body.date != null && String(body.date).trim() ? String(body.date).trim() : null;
     const alt = body.alt != null ? String(body.alt).trim() : null;
 
@@ -159,7 +199,7 @@ router.post("/", maybeMulter, async (req: Request, res: Response) => {
 });
 
 // PATCH /api/web/v1/gallery/:uuid/ — update metadata and/or replace image
-router.patch("/:uuid/", maybeMulter, async (req: Request, res: Response) => {
+router.patch("/:uuid/", requireAuth, maybeMulter, async (req: Request, res: Response) => {
   try {
     const uuid = req.params.uuid;
     const body = req.body as Record<string, unknown>;
@@ -178,7 +218,12 @@ router.patch("/:uuid/", maybeMulter, async (req: Request, res: Response) => {
     }
 
     const title = body.title != null ? String(body.title).trim() : row.title;
-    const category = body.category != null && CATEGORIES.includes(String(body.category)) ? String(body.category) : row.category;
+    const currentCategory = normalizeSection(row.category);
+    const categoryInput = body.section ?? body.category;
+    const category = categoryInput !== undefined ? resolveSection(categoryInput) : currentCategory;
+    if (!category) {
+      return res.status(400).json({ detail: `Invalid gallery section. Allowed values: ${SECTION_OPTIONS.join(", ")}` });
+    }
     const date = body.date !== undefined ? (body.date != null && String(body.date).trim() ? String(body.date).trim() : null) : row.date;
     const alt = body.alt !== undefined ? (body.alt != null ? String(body.alt).trim() : null) : row.alt;
 
@@ -200,7 +245,7 @@ router.patch("/:uuid/", maybeMulter, async (req: Request, res: Response) => {
 });
 
 // DELETE /api/web/v1/gallery/:uuid/
-router.delete("/:uuid/", async (req: Request, res: Response) => {
+router.delete("/:uuid/", requireAuth, async (req: Request, res: Response) => {
   try {
     const [result] = await pool.query("DELETE FROM gallery WHERE uuid = ?", [req.params.uuid]);
     const affected = (result as { affectedRows: number })?.affectedRows ?? 0;
